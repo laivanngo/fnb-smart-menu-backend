@@ -1,4 +1,4 @@
-# Tệp: crud.py (Bản HOÀN CHỈNH - Đã sửa lỗi create_option, thêm update/delete voucher, sắp xếp options)
+# Tệp: crud.py (Đã thêm logic "Hết hàng")
 # Mục đích: Chứa tất cả các hàm logic nghiệp vụ (CRUD)
 
 from sqlalchemy.orm import Session, joinedload, subqueryload
@@ -298,6 +298,11 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
         if not db_product:
             raise HTTPException(status_code=400, detail=f"Sản phẩm ID {item.product_id} không hợp lệ hoặc không tồn tại.")
 
+        # === THÊM KIỂM TRA HẾT HÀNG === (Theo huongdan (1).pdf)
+        if db_product.is_out_of_stock:
+            raise HTTPException(status_code=400, detail=f"Món '{db_product.name}' đã tạm hết hàng!")
+        # ================================
+
         item_price = db_product.base_price
 
         for option_value_id in item.options:
@@ -343,7 +348,7 @@ def create_order(db: Session, order: schemas.OrderCreate):
     try:
         calculated = calculate_order_total(db, order)
     except HTTPException as e:
-        raise e # Ném lại lỗi nếu sản phẩm/voucher/option không hợp lệ
+        raise e # Ném lại lỗi nếu sản phẩm/voucher/option/hết hàng không hợp lệ
 
     # 2. Tạo bản ghi Order chính
     db_order = models.Order(
@@ -379,6 +384,7 @@ def create_order(db: Session, order: schemas.OrderCreate):
     for item in order.items:
         db_product = products_in_order.get(item.product_id)
         if not db_product: continue # Bỏ qua nếu sản phẩm không tìm thấy (đã check ở calculate)
+        # Không cần check is_out_of_stock nữa vì calculate_order_total đã làm
 
         options_selected_objects = [option_values_in_order.get(opt_id) for opt_id in item.options if option_values_in_order.get(opt_id)]
         item_price_at_order = db_product.base_price + sum(opt.price_adjustment for opt in options_selected_objects)

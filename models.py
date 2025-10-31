@@ -1,4 +1,4 @@
-# Tệp: models.py (ĐÃ THÊM THỨ TỰ CHO OPTION)
+# Tệp: models.py (Đã thêm is_out_of_stock)
 # Mục đích: Định nghĩa cấu trúc "Kho dữ liệu" (Database)
 
 from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, ForeignKey, Enum as SAEnum
@@ -59,6 +59,11 @@ class Product(Base):
     base_price = Column(Float, nullable=False)
     image_url = Column(String)
     is_best_seller = Column(Boolean, default=False)
+    
+    # === THÊM DÒNG NÀY VÀO === (Theo huongdan (1).pdf)
+    is_out_of_stock = Column(Boolean, default=False, nullable=False)
+    # ==========================
+    
     category_id = Column(Integer, ForeignKey("categories.id"))
     category = relationship("Category", back_populates="products")
     options = relationship("Option", secondary="product_option_association", back_populates="products")
@@ -69,7 +74,7 @@ class Option(Base):
     name = Column(String, index=True, nullable=False)
     type = Column(SAEnum(OptionType), nullable=False, default=OptionType.CHON_NHIEU)
     
-    # === THÊM CỘT SẮP XẾP VÀO ĐÂY ===
+    # === THÊM CỘT SẮP XẾP VÀO ĐÂY === (Cột này đã có trong file cũ của anh/chị)
     display_order = Column(Integer, default=0) 
     
     values = relationship("OptionValue", back_populates="option", cascade="all, delete-orphan")

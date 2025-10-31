@@ -1,4 +1,4 @@
-# Tệp: schemas.py (Bản HOÀN CHỈNH - Đã sửa Pydantic V2 & Thêm Chi tiết Đơn hàng)
+# Tệp: schemas.py (Đã thêm is_out_of_stock)
 # Mục đích: Định nghĩa các "biểu mẫu" (schemas) Pydantic
 
 from pydantic import BaseModel, ConfigDict
@@ -58,6 +58,7 @@ class ProductBase(BaseModel):
     base_price: float
     image_url: Optional[str] = None
     is_best_seller: Optional[bool] = False
+    is_out_of_stock: Optional[bool] = False # <-- THÊM DÒNG NÀY [cite: 416]
 
 class ProductCreate(ProductBase):
     category_id: int
@@ -75,6 +76,7 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     is_best_seller: Optional[bool] = None
     category_id: Optional[int] = None
+    is_out_of_stock: Optional[bool] = None # <-- THÊM DÒNG NÀY [cite: 428]
 
 class ProductLinkOptionsRequest(BaseModel):
     option_ids: List[int]
@@ -136,6 +138,7 @@ class PublicProduct(BaseModel):
     base_price: float
     image_url: Optional[str]
     is_best_seller: bool
+    is_out_of_stock: bool # <-- THÊM DÒNG NÀY [cite: 438]
     options: List[PublicOption] = [] # Đã được sắp xếp bởi CRUD
     model_config = ConfigDict(from_attributes=True)
 
