@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship, sessionmaker, DeclarativeBase
 import enum
 
 # --- Cấu hình cơ bản ---
-DATABASE_URL = "sqlite:///./trasua_express.db"
+DATABASE_URL = "sqlite:////app/database_data/trasua_express.db"
 
 class Base(DeclarativeBase):
     pass

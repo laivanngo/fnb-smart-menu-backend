@@ -1,0 +1,15 @@
+# Tệp: fnb-smart-menu-backend/.dockerignore
+
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.db
+*.db-journal
+.pytest_cache
+.vscode
+.git
+.gitignore
+*.log
