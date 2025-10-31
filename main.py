@@ -1,28 +1,49 @@
-# Tệp: main.py (Bản HOÀN CHỈNH - Đã thêm PUT/DELETE Voucher, GET Order Detail)
+# Tệp: main.py (Bản HOÀN CHỈNH - Đã thêm Upload Image & Static Files)
 # Mục đích: "Tổng hành dinh" của FastAPI, kết nối mọi thứ
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from typing import List
 
-# Import tất cả các "mảnh ghép"
+# === THÊM IMPORT MỚI ===
+from fastapi.staticfiles import StaticFiles # Để phục vụ file tĩnh
+import shutil # Để lưu file
+import os # Để tạo thư mục, lấy tên file
+import uuid # Để tạo tên file duy nhất
+# ========================
+
 import crud, models, schemas, security
 from models import SessionLocal, engine, Base
-
-# Cho phép Giao diện (Frontend) từ tên miền khác gọi vào
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="FNB Smart Menu - Backend API")
 
-# 2. Cấu hình CORS (Rất quan trọng)
+# --- Cấu hình Thư mục Uploads ---
+UPLOAD_DIRECTORY = "uploads" # Thư mục lưu ảnh (bên trong container)
+STATIC_PATH = "/static" # Đường dẫn public để truy cập ảnh
+
+# Tạo thư mục nếu chưa có
+os.makedirs(UPLOAD_DIRECTORY, exist_ok=True)
+
+# "Mở" thư mục uploads ra Internet qua đường dẫn /static
+# Bất kỳ file nào trong UPLOAD_DIRECTORY sẽ truy cập được qua /static
+# Quan trọng: Dòng này phải ở TRƯỚC các API router
+app.mount(STATIC_PATH, StaticFiles(directory=UPLOAD_DIRECTORY), name="static")
+
+# 2. Cấu hình CORS (Đã bao gồm tên miền production)
 origins = [
     "http://localhost",
-    "http://localhost:3000", # Frontend Khách hàng
-    "http://localhost:3001", # Frontend Admin
+    "http://localhost:3000", # Frontend Khách hàng (local)
+    "http://localhost:3001", # Frontend Admin (local)
     "http://127.0.0.1",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
+    
+    # === TÊN MIỀN CÔNG KHAI ===
+    "https://menu.fnbsmartmenu.com",
+    "https://admin.fnbsmartmenu.com",
+    "https://api.fnbsmartmenu.com" 
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -80,7 +101,6 @@ def calculate_order(
         # Nếu lỗi là do người dùng (400, 404), trả về lỗi đó
         if e.status_code < 500:
              raise e
-        # Nếu lỗi hệ thống (5xx)
         print(f"Lỗi khi tính toán đơn hàng: {e.detail}")
         raise HTTPException(status_code=500, detail="Lỗi hệ thống khi tính toán đơn hàng.")
     except Exception as e:
@@ -104,12 +124,7 @@ def submit_new_order(
         raise HTTPException(status_code=500, detail="Lỗi hệ thống khi tạo đơn hàng.")
     except Exception as e:
         print(f"Lỗi không xác định khi tạo đơn hàng: {e}")
-        # Có thể cần rollback transaction ở đây nếu crud chưa làm
         raise HTTPException(status_code=500, detail="Không thể xử lý đơn hàng do lỗi hệ thống.")
-
-# Có thể thêm API kiểm tra voucher ở đây nếu cần
-# @app.get("/vouchers/check/{code}") ...
-
 
 # --- "CÁNH CỬA" QUẢN TRỊ (Bắt buộc phải có "thẻ từ") ---
 
@@ -134,6 +149,42 @@ async def login_for_access_token(
 async def read_admin_me(current_admin: models.Admin = Depends(security.get_current_admin)):
     """API ADMIN: Kiểm tra 'thẻ từ' và lấy thông tin user admin"""
     return current_admin
+
+# === API UPLOAD ẢNH MỚI ===
+@app.post("/admin/upload-image", status_code=status.HTTP_201_CREATED)
+async def upload_image(
+    file: UploadFile = File(...), 
+    current_admin: models.Admin = Depends(security.get_current_admin)
+):
+    """
+    API ADMIN: Nhận 1 file ảnh, lưu vào thư mục 'uploads'
+    và trả về đường dẫn public (vd: /static/ten_file_duy_nhat.jpg)
+    """
+    # 1. Tạo tên file duy nhất
+    file_extension = os.path.splitext(file.filename)[1] # Lấy đuôi file (vd: .jpg)
+    if file_extension not in [".jpg", ".jpeg", ".png", ".webp"]:
+        raise HTTPException(status_code=400, detail="Định dạng file không hợp lệ. Chỉ chấp nhận .jpg, .png, .webp.")
+        
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIRECTORY, unique_filename)
+    
+    # 2. Lưu file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Không thể lưu file: {e}")
+    finally:
+        file.file.close()
+        
+    # 3. Trả về đường dẫn public (bắt đầu bằng STATIC_PATH)
+    public_url = os.path.join(STATIC_PATH, unique_filename)
+    # Đảm bảo đường dẫn dùng dấu / (cho URL)
+    public_url = public_url.replace("\\", "/") 
+    
+    return {"image_url": public_url}
+# ==========================
+
 
 # === Quản lý Danh mục (Category) ===
 @app.post("/admin/categories/", response_model=schemas.Category, status_code=status.HTTP_201_CREATED)
@@ -244,7 +295,6 @@ def link_options_to_product(
 ):
     db_product_check = crud.get_product(db, product_id)
     if not db_product_check: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy sản phẩm")
-    # Có thể kiểm tra thêm các Option ID có hợp lệ không nếu cần
     db_product = crud.link_product_to_options(db, product_id, link_request.option_ids)
     return db_product
 
@@ -285,14 +335,12 @@ def delete_existing_voucher(
 def read_all_orders(
     db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
 ):
-    """API ADMIN: Lấy danh sách tất cả đơn hàng (thông tin cơ bản)"""
     return crud.get_orders(db)
 
 @app.get("/admin/orders/{order_id}", response_model=schemas.OrderDetail)
 def read_order_details(
     order_id: int, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
 ):
-    """API ADMIN: Lấy chi tiết đầy đủ của 1 đơn hàng"""
     db_order = crud.get_order_details(db, order_id=order_id)
     if db_order is None: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy đơn hàng")
     return db_order
@@ -301,7 +349,6 @@ def read_order_details(
 def update_order_status(
     order_id: int, status: models.OrderStatus, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
 ):
-    """API ADMIN: Cập nhật trạng thái đơn hàng"""
     db_order = crud.update_order_status(db, order_id, status)
     if db_order is None: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy đơn hàng")
     return db_order

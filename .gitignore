@@ -143,3 +143,6 @@ trasua_express.db # Bỏ qua file database
 *.swp
 *.swo
 *~
+
+# Thư mục chứa ảnh upload
+uploads/
