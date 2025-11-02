@@ -41,7 +41,9 @@ origins = [
     "http://127.0.0.1:3001",
     
     # === TÊN MIỀN CÔNG KHAI ===
-    "https://menu.fnbsmartmenu.com",
+    "https://biitea.com",
+    "https://www.biitea.com",
+    # "https://menu.fnbsmartmenu.com",
     "https://admin.fnbsmartmenu.com",
     "https://api.fnbsmartmenu.com" 
 ]
