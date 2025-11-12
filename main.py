@@ -4,7 +4,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 
 # === THÊM IMPORT MỚI ===
 from fastapi.staticfiles import StaticFiles # Để phục vụ file tĩnh
@@ -196,8 +196,8 @@ def create_new_category(
 
 @app.get("/admin/categories/", response_model=List[schemas.Category])
 def read_all_categories(
-    db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
-): return crud.get_categories(db)
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
+): return crud.get_categories(db, skip=skip, limit=limit)
 
 @app.put("/admin/categories/{category_id}", response_model=schemas.Category)
 def update_existing_category(
@@ -226,8 +226,8 @@ def create_new_product(
 
 @app.get("/admin/products/", response_model=List[schemas.Product])
 def read_all_products(
-    db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
-): return crud.get_products(db)
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
+): return crud.get_products(db, skip=skip, limit=limit)
 
 @app.get("/admin/products/{product_id}", response_model=schemas.Product)
 def read_one_product(
@@ -264,8 +264,8 @@ def create_new_option(
 
 @app.get("/admin/options/", response_model=List[schemas.Option])
 def read_all_options(
-    db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
-): return crud.get_options(db)
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
+): return crud.get_options(db, skip=skip, limit=limit)
 
 @app.delete("/admin/options/{option_id}", response_model=schemas.Option)
 def delete_existing_option(
@@ -275,6 +275,19 @@ def delete_existing_option(
     if db_option is None: raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Nhóm Tùy chọn")
     return db_option
 
+@app.put("/admin/options/{option_id}", response_model=schemas.Option)
+def update_existing_option(
+    option_id: int, 
+    option: schemas.OptionUpdate, 
+    db: Session = Depends(get_db), 
+    current_admin: models.Admin = Depends(security.get_current_admin)
+):
+    """API ADMIN: Cập nhật thông tin Nhóm Tùy chọn (name, type, display_order)"""
+    db_option = crud.update_option(db, option_id, option)
+    if db_option is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Nhóm Tùy chọn")
+    return db_option
+
 @app.post("/admin/options/{option_id}/values/", response_model=schemas.OptionValue, status_code=status.HTTP_201_CREATED)
 def create_new_option_value(
     option_id: int, option_value: schemas.OptionValueCreate, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
@@ -282,6 +295,19 @@ def create_new_option_value(
     db_option = crud.get_option(db, option_id)
     if not db_option: raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Nhóm Tùy chọn ID {option_id} không tồn tại.")
     return crud.create_option_value(db=db, option_value=option_value, option_id=option_id)
+
+@app.put("/admin/values/{value_id}", response_model=schemas.OptionValue)
+def update_existing_option_value(
+    value_id: int, 
+    option_value: schemas.OptionValueUpdate, 
+    db: Session = Depends(get_db), 
+    current_admin: models.Admin = Depends(security.get_current_admin)
+):
+    """API ADMIN: Cập nhật Lựa chọn con (tên, giá, BẬT/TẮT TỒN KHO)"""
+    db_value = crud.update_option_value(db, value_id, option_value)
+    if db_value is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Không tìm thấy Lựa chọn con")
+    return db_value
 
 @app.delete("/admin/values/{value_id}", response_model=schemas.OptionValue)
 def delete_existing_option_value(
@@ -311,8 +337,8 @@ def create_new_voucher(
 
 @app.get("/admin/vouchers/", response_model=List[schemas.Voucher])
 def read_all_vouchers(
-    db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
-): return crud.get_vouchers(db)
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
+): return crud.get_vouchers(db, skip=skip, limit=limit)
 
 @app.put("/admin/vouchers/{voucher_id}", response_model=schemas.Voucher)
 def update_existing_voucher(
@@ -335,9 +361,9 @@ def delete_existing_voucher(
 # === Quản lý Đơn hàng (Admin) ===
 @app.get("/admin/orders/", response_model=List[schemas.AdminOrderListResponse])
 def read_all_orders(
-    db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
+    skip: int = 0, limit: int = 100, db: Session = Depends(get_db), current_admin: models.Admin = Depends(security.get_current_admin)
 ):
-    return crud.get_orders(db)
+    return crud.get_orders(db, skip=skip, limit=limit)
 
 @app.get("/admin/orders/{order_id}", response_model=schemas.OrderDetail)
 def read_order_details(

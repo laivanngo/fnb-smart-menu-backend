@@ -8,8 +8,10 @@ __pycache__
 .Python
 *.db
 *.db-journal
+database_data/ # Thêm thư mục chứa file SQLite cũ
 .pytest_cache
 .vscode
 .git
 .gitignore
 *.log
+docker-compose.yml # Không đưa tệp này vào image

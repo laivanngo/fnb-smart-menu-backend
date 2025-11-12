@@ -1,8 +1,8 @@
-# Tệp: crud.py (Đã thêm logic "Hết hàng")
+# Tệp: crud.py (Bản vá 1.9.1 - Sửa logic Sắp xếp)
 # Mục đích: Chứa tất cả các hàm logic nghiệp vụ (CRUD)
 
 from sqlalchemy.orm import Session, joinedload, subqueryload
-from sqlalchemy import asc # Import công cụ Sắp xếp
+from sqlalchemy import asc, func
 from fastapi import HTTPException
 import models, schemas
 import security
@@ -27,9 +27,9 @@ def get_category(db: Session, category_id: int):
     """Tìm 1 danh mục theo ID"""
     return db.query(models.Category).filter(models.Category.id == category_id).first()
 
-def get_categories(db: Session):
+def get_categories(db: Session, skip: int = 0, limit: int = 100):
     """Lấy danh sách tất cả danh mục, sắp xếp theo display_order"""
-    return db.query(models.Category).order_by(models.Category.display_order).all()
+    return db.query(models.Category).order_by(models.Category.display_order).offset(skip).limit(limit).all()
 
 def create_category(db: Session, category: schemas.CategoryCreate):
     """Tạo danh mục mới"""
@@ -70,18 +70,14 @@ def get_product(db: Session, product_id: int):
     # Sắp xếp options sau khi lấy ra
     if product and product.options:
         product.options.sort(key=lambda opt: opt.display_order if opt.display_order is not None else float('inf'))
-        # Có thể sắp xếp values nếu cần
-        # for opt in product.options:
-        #     opt.values.sort(key=lambda val: val.name)
-
     return product
 
 
-def get_products(db: Session):
+def get_products(db: Session, skip: int = 0, limit: int = 100):
     """Lấy danh sách TẤT CẢ sản phẩm, kèm tùy chọn"""
     products = db.query(models.Product).options(
         joinedload(models.Product.options) # Tải các Nhóm Tùy chọn
-    ).all()
+    ).order_by(models.Product.category_id, models.Product.display_order).offset(skip).limit(limit).all() # Sắp xếp
 
     # Sắp xếp options cho từng product
     for product in products:
@@ -92,7 +88,14 @@ def get_products(db: Session):
 
 def create_product(db: Session, product: schemas.ProductCreate):
     """Tạo sản phẩm mới và gắn nó vào một danh mục"""
-    db_product = models.Product(**product.model_dump()) # Dùng model_dump cho Pydantic V2
+    
+    # Tìm max display_order TRONG DANH MỤC ĐÓ
+    max_order = db.query(func.max(models.Product.display_order)).filter(models.Product.category_id == product.category_id).scalar() or 0
+    
+    # Dùng model_dump(exclude) để không ghi đè display_order
+    product_data = product.model_dump(exclude={"display_order"})
+    db_product = models.Product(**product_data, display_order=max_order + 1)
+    
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
@@ -129,14 +132,9 @@ def link_product_to_options(db: Session, product_id: int, option_ids: List[int])
 
     # Lấy các đối tượng Option từ DB theo ID
     db_options = db.query(models.Option).filter(models.Option.id.in_(option_ids)).all()
-
-    # Kiểm tra xem tất cả ID gửi lên có hợp lệ không (tùy chọn)
-    # if len(db_options) != len(set(option_ids)):
-    #     raise HTTPException(status_code=400, detail="Một hoặc nhiều Option ID không hợp lệ.")
-
     db_product.options = db_options # Gán trực tiếp list các object Option
-
     db.commit()
+    
     # Lấy lại product với options đã load để trả về
     return get_product(db, product_id)
 
@@ -147,18 +145,17 @@ def get_option(db: Session, option_id: int):
 
 def create_option(db: Session, option: schemas.OptionCreate):
     """Tạo một Nhóm Tùy chọn mới (Vd: Topping)"""
-    # display_order sẽ lấy default=0 từ model
-    db_option = models.Option(name=option.name, type=option.type)
+    db_option = models.Option(name=option.name, type=option.type, display_order=option.display_order)
     db.add(db_option)
     db.commit()
     db.refresh(db_option)
     return db_option
 
-def get_options(db: Session):
+def get_options(db: Session, skip: int = 0, limit: int = 100):
     """Lấy TẤT CẢ các nhóm tùy chọn, kèm lựa chọn con, sắp xếp theo display_order"""
     return db.query(models.Option).options(
         joinedload(models.Option.values) # Tải luôn các values
-    ).order_by(models.Option.display_order).all() # Sắp xếp
+    ).order_by(models.Option.display_order).offset(skip).limit(limit).all() # Sắp xếp
 
 def delete_option(db: Session, option_id: int):
     """Xóa một Nhóm Tùy chọn (và các lựa chọn con bên trong)"""
@@ -169,6 +166,18 @@ def delete_option(db: Session, option_id: int):
     db.delete(db_option) # Cascade delete sẽ xóa cả values
     db.commit()
     return deleted_copy
+
+def update_option(db: Session, option_id: int, option: schemas.OptionUpdate):
+    """Cập nhật thông tin Nhóm Tùy chọn (name, type, display_order)"""
+    db_option = get_option(db, option_id)
+    if not db_option:
+        return None
+    update_data = option.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_option, key, value)
+    db.commit()
+    db.refresh(db_option)
+    return db_option
 
 # --- Nghiệp vụ Lựa chọn con (OptionValue) ---
 def get_option_value(db: Session, value_id: int):
@@ -193,6 +202,18 @@ def delete_option_value(db: Session, value_id: int):
     db.commit()
     return deleted_copy
 
+def update_option_value(db: Session, value_id: int, option_value: schemas.OptionValueUpdate):
+    """Cập nhật Lựa chọn con (ví dụ: tên, giá, hoặc HẾT HÀNG)"""
+    db_value = get_option_value(db, value_id)
+    if not db_value:
+        return None
+    update_data = option_value.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_value, key, value)
+    db.commit()
+    db.refresh(db_value)
+    return db_value
+
 # --- Nghiệp vụ Voucher ---
 def create_voucher(db: Session, voucher: schemas.VoucherCreate):
     """Tạo mã giảm giá mới"""
@@ -202,9 +223,9 @@ def create_voucher(db: Session, voucher: schemas.VoucherCreate):
     db.refresh(db_voucher)
     return db_voucher
 
-def get_vouchers(db: Session):
+def get_vouchers(db: Session, skip: int = 0, limit: int = 100):
     """Lấy tất cả mã giảm giá"""
-    return db.query(models.Voucher).all()
+    return db.query(models.Voucher).offset(skip).limit(limit).all()
 
 def get_voucher_by_code(db: Session, code: str):
     """Tìm mã giảm giá theo code (chỉ mã đang active)"""
@@ -240,9 +261,9 @@ def delete_voucher(db: Session, voucher_id: int):
 def get_public_menu(db: Session):
     """Lấy toàn bộ Menu công khai, đã sắp xếp"""
     categories = db.query(models.Category).options(
-        subqueryload(models.Category.products). # Tải products
-        subqueryload(models.Product.options).  # Tải options cho product
-        joinedload(models.Option.values)       # Tải values cho option (dùng joinedload vì value đơn giản)
+        # === SỬA DÒNG NÀY (Bản vá 1.9.1) ===
+        # Gỡ bỏ .order_by() bị lỗi. Việc sắp xếp đã được chuyển vào models.py
+        subqueryload(models.Category.products).subqueryload(models.Product.options).joinedload(models.Option.values)      # Tải values cho option
     ).order_by(models.Category.display_order).all()
 
     # Sắp xếp Options trong từng Product theo display_order
@@ -250,9 +271,6 @@ def get_public_menu(db: Session):
         for product in category.products:
             # Sắp xếp options dựa trên display_order của Option
             product.options.sort(key=lambda opt: opt.display_order if opt.display_order is not None else float('inf'))
-            # Có thể cần sắp xếp values trong từng option nếu cần (ví dụ theo tên hoặc giá)
-            # for option in product.options:
-            #     option.values.sort(key=lambda val: val.name)
 
     return categories
 
@@ -278,7 +296,6 @@ def _calculate_discount(voucher: models.Voucher, sub_total: float) -> float:
     elif voucher.type == "fixed":
         discount = voucher.value
 
-    # Đảm bảo giảm giá không âm và không lớn hơn tổng tiền
     discount = max(0, discount)
     return min(discount, sub_total)
 
@@ -286,10 +303,9 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
     """Tính toán lại tổng tiền đơn hàng từ ID (Nguồn tin cậy)"""
     sub_total = 0.0
 
-    product_ids = list(set([item.product_id for item in order_data.items])) # Lấy ID duy nhất
-    option_value_ids = list(set([opt_id for item in order_data.items for opt_id in item.options])) # Lấy ID duy nhất
+    product_ids = list(set([item.product_id for item in order_data.items])) 
+    option_value_ids = list(set([opt_id for item in order_data.items for opt_id in item.options])) 
 
-    # Truy vấn một lần để lấy tất cả product và option value cần thiết
     products_in_cart = {p.id: p for p in db.query(models.Product).filter(models.Product.id.in_(product_ids)).all()}
     option_values_in_cart = {ov.id: ov for ov in db.query(models.OptionValue).filter(models.OptionValue.id.in_(option_value_ids)).all()}
 
@@ -298,20 +314,19 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
         if not db_product:
             raise HTTPException(status_code=400, detail=f"Sản phẩm ID {item.product_id} không hợp lệ hoặc không tồn tại.")
 
-        # === THÊM KIỂM TRA HẾT HÀNG === (Theo huongdan (1).pdf)
         if db_product.is_out_of_stock:
             raise HTTPException(status_code=400, detail=f"Món '{db_product.name}' đã tạm hết hàng!")
-        # ================================
 
         item_price = db_product.base_price
 
         for option_value_id in item.options:
             db_option_value = option_values_in_cart.get(option_value_id)
             if db_option_value:
+                if db_option_value.is_out_of_stock:
+                    raise HTTPException(status_code=400, detail=f"Tùy chọn '{db_option_value.name}' đã tạm hết hàng!")
                 item_price += db_option_value.price_adjustment
             else:
                  raise HTTPException(status_code=400, detail=f"Tùy chọn ID {option_value_id} không hợp lệ.")
-                 # Hoặc bỏ qua nếu muốn linh hoạt hơn: pass
 
         sub_total += item_price * item.quantity
 
@@ -322,19 +337,17 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
     if order_data.voucher_code:
         db_voucher = get_voucher_by_code(db, order_data.voucher_code)
         if db_voucher:
-            # Kiểm tra điều kiện voucher trước khi áp dụng
             if sub_total >= db_voucher.min_order_value:
                 discount_amount = _calculate_discount(db_voucher, sub_total)
             else:
-                 raise HTTPException(status_code=400, detail=f"Đơn hàng chưa đủ điều kiện tối thiểu ({db_voucher.min_order_value:,}đ) để áp dụng mã '{order_data.voucher_code}'.")
+                 raise HTTPException(status_code=400, detail=f"Đơn hàng chưa đủ điều kiện tối thiểu ({db_voucher.min_order_value:,.0f}đ) để áp dụng mã '{order_data.voucher_code}'.")
         else:
-            # Ném lỗi nếu voucher không hợp lệ
              raise HTTPException(status_code=400, detail=f"Mã giảm giá '{order_data.voucher_code}' không hợp lệ hoặc đã hết hạn.")
 
     total_amount = sub_total + delivery_fee - discount_amount
 
     return schemas.OrderCalculateResponse(
-        sub_total=round(sub_total), # Làm tròn tiền Việt
+        sub_total=round(sub_total), 
         delivery_fee=round(delivery_fee),
         discount_amount=round(discount_amount),
         total_amount=round(total_amount) if total_amount > 0 else 0
@@ -344,13 +357,11 @@ def calculate_order_total(db: Session, order_data: schemas.OrderCalculateRequest
 def create_order(db: Session, order: schemas.OrderCreate):
     """Tạo Đơn hàng mới và lưu vào DB"""
 
-    # 1. Tính toán lại tổng tiền lần cuối (Nguồn tin cậy duy nhất)
     try:
         calculated = calculate_order_total(db, order)
     except HTTPException as e:
-        raise e # Ném lại lỗi nếu sản phẩm/voucher/option/hết hàng không hợp lệ
+        raise e 
 
-    # 2. Tạo bản ghi Order chính
     db_order = models.Order(
         customer_name=order.customer_name,
         customer_phone=order.customer_phone,
@@ -358,7 +369,7 @@ def create_order(db: Session, order: schemas.OrderCreate):
         customer_note=order.customer_note,
         payment_method=order.payment_method,
         delivery_method_selected=order.delivery_method,
-        voucher_code=order.voucher_code if calculated.discount_amount > 0 else None, # Chỉ lưu nếu voucher hợp lệ
+        voucher_code=order.voucher_code if calculated.discount_amount > 0 else None, 
         sub_total=calculated.sub_total,
         delivery_fee=calculated.delivery_fee,
         discount_amount=calculated.discount_amount,
@@ -366,25 +377,23 @@ def create_order(db: Session, order: schemas.OrderCreate):
         status=models.OrderStatus.MOI
     )
     db.add(db_order)
-    db.flush() # Flush để lấy được order_id mà không commit ngay
+    db.flush() 
 
-    # 3. Lưu các món và tùy chọn của đơn hàng (Tối ưu hóa truy vấn)
     product_ids = list(set([item.product_id for item in order.items]))
     option_value_ids = list(set([opt_id for item in order.items for opt_id in item.options]))
     products_in_order = {p.id: p for p in db.query(models.Product).filter(models.Product.id.in_(product_ids)).all()}
     option_values_in_order = {
-        ov.id: ov for ov in db.query(models.OptionValue).options(joinedload(models.OptionValue.option)) # Tải luôn tên Nhóm
+        ov.id: ov for ov in db.query(models.OptionValue).options(joinedload(models.OptionValue.option)) 
         .filter(models.OptionValue.id.in_(option_value_ids)).all()
     }
 
     order_items_to_add = []
     order_item_options_to_add = []
-    temp_items_for_options = [] # Dùng list để lưu tạm item object trước khi flush lấy id
+    temp_items_for_options = [] 
 
     for item in order.items:
         db_product = products_in_order.get(item.product_id)
-        if not db_product: continue # Bỏ qua nếu sản phẩm không tìm thấy (đã check ở calculate)
-        # Không cần check is_out_of_stock nữa vì calculate_order_total đã làm
+        if not db_product: continue 
 
         options_selected_objects = [option_values_in_order.get(opt_id) for opt_id in item.options if option_values_in_order.get(opt_id)]
         item_price_at_order = db_product.base_price + sum(opt.price_adjustment for opt in options_selected_objects)
@@ -399,40 +408,36 @@ def create_order(db: Session, order: schemas.OrderCreate):
         order_items_to_add.append(db_item)
         temp_items_for_options.append({"item_obj": db_item, "options": options_selected_objects})
 
-    # Thêm tất cả item vào DB một lần
     db.add_all(order_items_to_add)
-    db.flush() # Flush để tất cả item object có ID
+    db.flush() 
 
-    # Bây giờ mới tạo các bản ghi Lựa chọn con với item_id đúng
     for temp_item in temp_items_for_options:
         db_item_obj = temp_item["item_obj"]
         options_selected = temp_item["options"]
         for opt_val in options_selected:
-            if opt_val and opt_val.option: # Check kỹ trước khi truy cập
+            if opt_val and opt_val.option: 
                 db_item_option = models.OrderItemOption(
-                    order_item_id=db_item_obj.id, # Lấy ID đã có sau khi flush
-                    option_name=opt_val.option.name, # Lấy tên Nhóm từ object đã tải
+                    order_item_id=db_item_obj.id, 
+                    option_name=opt_val.option.name, 
                     value_name=opt_val.name,
                     added_price=opt_val.price_adjustment
                 )
                 order_item_options_to_add.append(db_item_option)
 
-    # Thêm tất cả option của item vào DB
     db.add_all(order_item_options_to_add)
 
-    db.commit() # Commit tất cả thay đổi
+    db.commit() 
     db.refresh(db_order)
     return db_order
 
 # --- Nghiệp vụ Admin xem Order ---
-def get_orders(db: Session):
+def get_orders(db: Session, skip: int = 0, limit: int = 100):
     """Lấy danh sách đơn hàng (thông tin cơ bản), mới nhất lên đầu"""
-    return db.query(models.Order).order_by(models.Order.id.desc()).all()
+    return db.query(models.Order).order_by(models.Order.id.desc()).offset(skip).limit(limit).all()
 
 def get_order_details(db: Session, order_id: int):
     """Lấy chi tiết đầy đủ của 1 đơn hàng"""
     return db.query(models.Order).options(
-        # Tải sẵn các item và option của item
         subqueryload(models.Order.items).
         subqueryload(models.OrderItem.options_selected)
     ).filter(models.Order.id == order_id).first()

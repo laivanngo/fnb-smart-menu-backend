@@ -4,6 +4,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 import models # Import models để dùng Enums
+from datetime import datetime
 
 # --- Biểu mẫu cho Admin ---
 class AdminBase(BaseModel):
@@ -28,6 +29,7 @@ class TokenData(BaseModel):
 class OptionValueBase(BaseModel):
     name: str
     price_adjustment: float
+    is_out_of_stock: Optional[bool] = False
 
 class OptionValueCreate(OptionValueBase):
     pass
@@ -37,6 +39,11 @@ class OptionValue(OptionValueBase):
     option_id: int
     model_config = ConfigDict(from_attributes=True) # Sửa orm_mode
 
+class OptionValueUpdate(BaseModel):
+    name: Optional[str] = None
+    price_adjustment: Optional[float] = None
+    is_out_of_stock: Optional[bool] = None    
+
 # --- Biểu mẫu cho Nhóm Tùy chọn (Option) ---
 class OptionBase(BaseModel):
     name: str
@@ -45,6 +52,11 @@ class OptionBase(BaseModel):
 
 class OptionCreate(OptionBase):
     pass # Không cần display_order khi tạo
+
+class OptionUpdate(BaseModel):
+    name: Optional[str] = None
+    type: Optional[models.OptionType] = None
+    display_order: Optional[int] = None
 
 class Option(OptionBase):
     id: int
@@ -57,6 +69,7 @@ class ProductBase(BaseModel):
     description: Optional[str] = None
     base_price: float
     image_url: Optional[str] = None
+    display_order: Optional[int] = 0
     is_best_seller: Optional[bool] = False
     is_out_of_stock: Optional[bool] = False # <-- THÊM DÒNG NÀY [cite: 416]
 
@@ -74,9 +87,10 @@ class ProductUpdate(BaseModel):
     description: Optional[str] = None
     base_price: Optional[float] = None
     image_url: Optional[str] = None
+    display_order: Optional[int] = None
     is_best_seller: Optional[bool] = None
     category_id: Optional[int] = None
-    is_out_of_stock: Optional[bool] = None # <-- THÊM DÒNG NÀY [cite: 428]
+    is_out_of_stock: Optional[bool] = None
 
 class ProductLinkOptionsRequest(BaseModel):
     option_ids: List[int]
@@ -121,6 +135,7 @@ class PublicOptionValue(BaseModel):
     id: int
     name: str
     price_adjustment: float
+    is_out_of_stock: bool
     model_config = ConfigDict(from_attributes=True)
 
 class PublicOption(BaseModel):
@@ -137,6 +152,7 @@ class PublicProduct(BaseModel):
     description: Optional[str]
     base_price: float
     image_url: Optional[str]
+    display_order: int
     is_best_seller: bool
     is_out_of_stock: bool # <-- THÊM DÒNG NÀY [cite: 438]
     options: List[PublicOption] = [] # Đã được sắp xếp bởi CRUD
@@ -213,6 +229,8 @@ class OrderDetail(BaseModel):
     payment_method: models.PaymentMethod
     delivery_method_selected: models.DeliveryMethod
     voucher_code: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
     items: List[OrderItemDetail] = []
     model_config = ConfigDict(from_attributes=True)
 
@@ -221,5 +239,5 @@ class AdminOrderListResponse(BaseModel):
     id: int
     total_amount: float
     status: models.OrderStatus
-    # Có thể thêm created_at nếu cần
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)

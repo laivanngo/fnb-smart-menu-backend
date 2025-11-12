@@ -1,17 +1,33 @@
-# Tệp: models.py (Đã thêm is_out_of_stock)
+# Tệp: models.py (Bản vá 1.9.1 - Sửa logic Sắp xếp)
 # Mục đích: Định nghĩa cấu trúc "Kho dữ liệu" (Database)
 
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, ForeignKey, Enum as SAEnum
+import os
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, ForeignKey, Enum as SAEnum, DateTime, func
 from sqlalchemy.orm import relationship, sessionmaker, DeclarativeBase
 import enum
 
 # --- Cấu hình cơ bản ---
-DATABASE_URL = "sqlite:////app/database_data/trasua_express.db"
+
+# === THAY ĐỔI PHẦN NÀY ===
+# Đọc thông tin CSDL từ biến môi trường
+# os.getenv("TEN_BIEN", "gia_tri_mac_dinh")
+DB_USER = os.getenv("POSTGRES_USER", "postgres")
+DB_PASS = os.getenv("POSTGRES_PASSWORD", "postgres")
+DB_HOST = os.getenv("DB_HOST", "db") # 'db' sẽ là tên service CSDL trong docker-compose
+DB_NAME = os.getenv("POSTGRES_DB", "fnb_db")
+DB_PORT = os.getenv("DB_PORT", "5432")
+
+# Tạo chuỗi kết nối mới cho PostgreSQL
+DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Dòng SQLite cũ, bây giờ có thể XÓA hoặc GHI CHÚ (comment) lại:
+# DATABASE_URL = "sqlite:////app/database_data/trasua_express.db"
+# ========================
 
 class Base(DeclarativeBase):
     pass
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- Định nghĩa các ENUM ---
@@ -49,7 +65,12 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
     display_order = Column(Integer, default=0)
-    products = relationship("Product", back_populates="category", cascade="all, delete-orphan")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    
+    # === SỬA DÒNG NÀY (Bản vá 1.9.1) ===
+    # Yêu cầu Móng nhà tự sắp xếp Product theo display_order
+    products = relationship("Product", back_populates="category", cascade="all, delete-orphan", order_by="Product.display_order")
 
 class Product(Base):
     __tablename__ = "products"
@@ -59,10 +80,10 @@ class Product(Base):
     base_price = Column(Float, nullable=False)
     image_url = Column(String)
     is_best_seller = Column(Boolean, default=False)
-    
-    # === THÊM DÒNG NÀY VÀO === (Theo huongdan (1).pdf)
+    display_order = Column(Integer, default=0) # Đã thêm ở 1.9
     is_out_of_stock = Column(Boolean, default=False, nullable=False)
-    # ==========================
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     
     category_id = Column(Integer, ForeignKey("categories.id"))
     category = relationship("Category", back_populates="products")
@@ -73,8 +94,6 @@ class Option(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True, nullable=False)
     type = Column(SAEnum(OptionType), nullable=False, default=OptionType.CHON_NHIEU)
-    
-    # === THÊM CỘT SẮP XẾP VÀO ĐÂY === (Cột này đã có trong file cũ của anh/chị)
     display_order = Column(Integer, default=0) 
     
     values = relationship("OptionValue", back_populates="option", cascade="all, delete-orphan")
@@ -85,6 +104,7 @@ class OptionValue(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     price_adjustment = Column(Float, nullable=False, default=0)
+    is_out_of_stock = Column(Boolean, default=False, nullable=False) # Đã thêm ở 1.2
     option_id = Column(Integer, ForeignKey("options.id"))
     option = relationship("Option", back_populates="values")
 
@@ -99,6 +119,8 @@ class Order(Base):
     delivery_fee = Column(Float, nullable=False, default=0)
     discount_amount = Column(Float, nullable=False, default=0)
     total_amount = Column(Float, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     status = Column(SAEnum(OrderStatus), nullable=False, default=OrderStatus.MOI)
     payment_method = Column(SAEnum(PaymentMethod), nullable=False, default=PaymentMethod.TIEN_MAT)
     delivery_method_selected = Column(SAEnum(DeliveryMethod), nullable=False)
@@ -136,6 +158,8 @@ class Voucher(Base):
     min_order_value = Column(Float, default=0)
     max_discount = Column(Float, nullable=True)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 class Admin(Base):
     __tablename__ = "admins"
