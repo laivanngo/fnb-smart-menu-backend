@@ -40,7 +40,9 @@ origins = [
     "http://127.0.0.1:3000",
     "http://127.0.0.1:3001",
     "https://biitea.com",
+    "https://ngon-ngon.com",
     "https://www.biitea.com",
+    "https://menu.fnbsmartmenu.com",
     "https://admin.fnbsmartmenu.com",
     "https://api.fnbsmartmenu.com" 
 ]

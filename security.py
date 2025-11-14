@@ -10,12 +10,18 @@ from typing import Optional
 import models, crud, schemas
 from sqlalchemy.orm import Session
 from models import SessionLocal
+import os # Thêm os để đọc biến môi trường
 
 # 1. Cấu hình "băm" mật khẩu
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # 2. Cấu hình "Thẻ từ" (JWT Token)
-SECRET_KEY = "DAY_LA_KHOA_BI_MAT_CUC_KY_QUAN_TRONG" # Đổi cái này khi deploy
+# Lấy SECRET_KEY từ biến môi trường.
+# Cần phải thiết lập biến này trong môi trường production.
+SECRET_KEY = os.getenv("SECRET_KEY")
+if SECRET_KEY is None:
+    raise ValueError("Biến môi trường SECRET_KEY chưa được thiết lập!")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # Thẻ từ có hạn 7 ngày
 

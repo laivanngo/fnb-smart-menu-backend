@@ -1,17 +1,46 @@
 # Tệp: fnb-smart-menu-backend/.dockerignore
+# Đã được tối ưu hóa
 
-venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
+# --- Môi trường ảo & Cache ---
+venv/
+.venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Cài đặt & Phân phối ---
 .Python
+build/
+dist/
+eggs/
+*.egg-info/
+*.egg
+
+# --- Database & Logs ---
 *.db
 *.db-journal
-database_data/ # Thêm thư mục chứa file SQLite cũ
-.pytest_cache
-.vscode
+*.sqlite3
+*.log
+
+# --- Test & Coverage ---
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+nosetests.xml
+coverage.xml
+
+# --- Git & Editor ---
 .git
 .gitignore
-*.log
-docker-compose.yml # Không đưa tệp này vào image
+.vscode/
+.idea/
+
+# --- Tệp không cần thiết trong image ---
+docker-compose.yml
+README.md
